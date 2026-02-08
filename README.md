@@ -2,7 +2,7 @@
 
 A minimal AI agent built from scratch in TypeScript that can read files, write files, and execute bash commands - just like Claude Code.
 
-https://github.com/user-attachments/assets/demo.mp4
+Video demo - https://youtu.be/jD42qbgy24Q
 
 ## Capabilities
 
