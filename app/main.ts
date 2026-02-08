@@ -1,9 +1,7 @@
 import OpenAI from "openai";
-import read from "./read";
-import write from "./write";
-import bash from "./bash";
-import type { ChatCompletionMessageParam } from "openai/resources";
-import { toolCallSchema } from "../schemas";
+import type { ChatCompletionMessageParam, ChatCompletionMessageToolCall } from "openai/resources";
+import { toolsArr } from "../tools";
+import agent from "./agent";
 
 async function main() {
   const [, , flag, prompt] = process.argv;
@@ -27,116 +25,30 @@ async function main() {
     { role: "user", content: prompt },
   ];
 
+  // We will start the agent using loop. It will give tools array for read, write and bash actions which we will execute one by one.
   while (true) {
     const response = await client.chat.completions.create({
-      model: "anthropic/claude-haiku-4.5",
+      model: "openai/gpt-oss-20b:free",
       messages: messagesArr,
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "Read",
-            description: "Read and return the contents of a file",
-            parameters: {
-              type: "object",
-              required: ["file_path"],
-              properties: {
-                file_path: {
-                  type: "string",
-                  description: "The path to the file to read",
-                },
-              },
-            },
-          },
-        },
-        {
-          type: "function",
-          function: {
-            name: "Write",
-            description: "Write contents to a file",
-            parameters: {
-              type: "object",
-              required: ["file_path", "content"],
-              properties: {
-                file_path: {
-                  type: "string",
-                  description: "The path of the file to write to",
-                },
-                content: {
-                  type: "string",
-                  description: "The content to write to the file",
-                },
-              },
-            },
-          },
-        },
-        {
-          type: "function",
-          function: {
-            name: "Bash",
-            description: "Execute a shell command",
-            parameters: {
-              type: "object",
-              required: ["command"],
-              properties: {
-                command: {
-                  type: "string",
-                  description: "The command to execute",
-                },
-              },
-            },
-          },
-        },
-      ],
+      tools: toolsArr
     });
 
     if (!response.choices || response.choices.length === 0) {
       return;
     }
 
-    messagesArr.push(response.choices[0].message);
+    messagesArr.push(response.choices[0].message); //There will be only one choice in our case
 
-    const toolCalls = response.choices[0].message.tool_calls;
+    const toolCalls: ChatCompletionMessageToolCall[] = response.choices[0].message.tool_calls ?? [];
 
-    for(const toolCall of toolCalls ?? []){
-      //@ts-ignore
-      const fn = toolCall.function;
-      const result = toolCallSchema.safeParse(fn);
-
-      if (result.success) {
-        const name = result.data.name;
-        if (name === "Read") {
-          read(result.data.arguments.file_path ?? '', toolCall.id, messagesArr);
-        } else if (name === "Write") {
-          write(
-            result.data.arguments.file_path ?? '',
-            toolCall.id,
-            result.data.arguments.content ?? "",
-            messagesArr,
-          );
-        } else if (name === "Bash") {
-          await bash(result.data.arguments.command ?? "", toolCall.id, messagesArr);
-          // return output;
-          // if(output)
-          //   return output
-
-          // return;
-        }
-      } else {
-        //TODO: here there can be a better implementation of all the errors which failed validation
-        return;
-      }
-    };
+    await agent(toolCalls, messagesArr)
 
     if (response.choices[0].finish_reason === "stop") {
       console.log(response.choices[0].message.content);
       return;
     }
-    // read(response, messagesArr)
   }
 
-  //@ts-ignore
-  // console.log(response.choices[0].message.content);
 }
 
 main();
